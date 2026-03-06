@@ -17,7 +17,7 @@ from shapely.geometry import Polygon, MultiPolygon, box
 from shapely.ops import unary_union
 
 # Your extractor constants (layer names)
-from screens.shared.osm_extract_common import POINT_LAYER_NAMES
+from screens.shared.osm_extract_common import POINT_LAYER_NAMES, LINE_LAYER_NAMES  # <-- FIXED IMPORT
 
 
 # ---------------------------
@@ -133,6 +133,47 @@ def _missing_area_clauses(missing) -> List[str]:
     if isinstance(missing, MultiPolygon):
         return [_polygon_to_overpass_poly(p) for p in missing.geoms]
     return []
+
+
+# ---------------------------
+# Coverage sliver-tolerant missing computation (NEW)
+# ---------------------------
+def _compute_missing_with_tolerance(
+    aoi,
+    coverage,
+    buffer_m=300,
+    min_missing_km2=1.0,
+    min_missing_ratio=0.005
+):
+    if coverage is None or coverage.is_empty:
+        return aoi
+
+    try:
+        aoi_m = gpd.GeoSeries([aoi], crs="EPSG:4326").to_crs("EPSG:3857").iloc[0]
+        cov_m = gpd.GeoSeries([coverage], crs="EPSG:4326").to_crs("EPSG:3857").iloc[0]
+    except Exception:
+        m = aoi.difference(coverage)
+        return None if m.is_empty else m
+
+    cov_buf = cov_m.buffer(buffer_m)
+    missing_m = aoi_m.difference(cov_buf)
+    if missing_m.is_empty:
+        return None
+
+    aoi_area = float(aoi_m.area) if aoi_m.area else 0.0
+    miss_area = float(missing_m.area) if missing_m.area else 0.0
+
+    miss_km2 = miss_area / 1_000_000.0
+    ratio = (miss_area / aoi_area) if aoi_area > 0 else 1.0
+
+    if miss_km2 < float(min_missing_km2) or ratio < float(min_missing_ratio):
+        return None
+
+    try:
+        return gpd.GeoSeries([missing_m], crs="EPSG:3857").to_crs("EPSG:4326").iloc[0]
+    except Exception:
+        m = aoi.difference(coverage)
+        return None if m.is_empty else m
 
 
 # ---------------------------
@@ -334,8 +375,20 @@ def fetch_osm_data(osm_filter, type_name, progress_cb, point1_entry, point2_entr
             # Determine local datasets that intersect AOI
             dirs = _datasets_intersecting_aoi(aoi)
             cov_union = _coverage_union(dirs) if dirs else None
-            missing = aoi if cov_union is None else aoi.difference(cov_union)
+
+            # --- REPLACED: missing computation (sliver-tolerant) ---
+            buffer_m = getattr(config, "COVERAGE_BUFFER_M", 300)
+            min_km2 = getattr(config, "COVERAGE_MIN_MISSING_KM2", 1.0)
+            min_ratio = getattr(config, "COVERAGE_MIN_MISSING_RATIO", 0.005)
+
+            missing = _compute_missing_with_tolerance(
+                aoi, cov_union,
+                buffer_m=buffer_m,
+                min_missing_km2=min_km2,
+                min_missing_ratio=min_ratio,
+            )
             clauses = _missing_area_clauses(missing)
+            # ------------------------------------------------------
 
             # Local fetch (merge across all intersecting datasets)
             layer = TYPE_TO_LAYER.get(type_name)
@@ -360,7 +413,7 @@ def fetch_osm_data(osm_filter, type_name, progress_cb, point1_entry, point2_entr
 
             # Fully covered -> skip overpass
             if dirs and not clauses:
-                say("Coverage: AOI fully covered locally — skipping Overpass.")
+                say("Coverage: AOI treated as covered — skipping Overpass.")
                 return local_df if local_df is not None and not local_df.empty else None
 
             # Partial coverage -> run overpass for missing polygons only

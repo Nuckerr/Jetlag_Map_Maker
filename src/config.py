@@ -61,3 +61,7 @@ all_data = {
 dedup_valid = False
 last_export_path = None
 saved_bound_box = None
+
+COVERAGE_BUFFER_M = 300 
+COVERAGE_MIN_MISSING_KM2 = 1.0 
+COVERAGE_MIN_MISSING_RATIO = 0.005
