@@ -9,6 +9,7 @@ from typing import Callable, Optional, Dict, List, Tuple
 import os
 import ssl
 import certifi
+from urllib.request import Request
 
 import pandas as pd
 import overpy
@@ -447,6 +448,15 @@ def _fetch_overpass_full(osm_filter, type_name, progress_cb, point1_entry, point
     # Full AOI from config
     return _fetch_overpass(osm_filter, type_name, progress_cb, point1_entry, point2_entry, area_clause_override=None)
 
+def _create_overpy(url: str) -> overpy.Overpass:
+    req = Request(url)
+    req.add_header('Referer', 'https://overpass-api.eu/')
+    req.add_header('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8')
+    req.add_header('Origin', 'https://overpass-turbo.eu')
+    req.add_header('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.3')
+    return overpy.Overpass(url=req)  # type: ignore  # openurl() accepts Request
+
+
 
 def _fetch_overpass(osm_filter, type_name, progress_cb, point1_entry, point2_entry, area_clause_override=None):
     def say(msg: str):
@@ -518,8 +528,8 @@ def _fetch_overpass(osm_filter, type_name, progress_cb, point1_entry, point2_ent
                 # monkeypatch the global factory to return our certifi-based context.
                 ssl._create_default_https_context = lambda *args, **kwargs: _certifi_ctx
 
-                api = overpy.Overpass(url=url)
-                result = _run_with_timeout(lambda: api.query(query), timeout=15)
+                api = _create_overpy(url)
+                result = _run_with_timeout(lambda: api.query(query), timeout=30)
 
                 say(f"{host}: nodes={len(getattr(result,'nodes',[]))} ways={len(getattr(result,'ways',[]))} rels={len(getattr(result,'relations',[]))}")
 
