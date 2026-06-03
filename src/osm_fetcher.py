@@ -555,6 +555,7 @@ def _fetch_overpass(osm_filter, type_name, progress_cb, point1_entry, point2_ent
                 return df
 
             except Exception as e:
+                print(f"{host}: {e}")
                 last_error = e
 
                 if _is_overloaded_error(e):
