@@ -123,7 +123,7 @@ def build_game_area_section(
             else:
                 config.all_data[type_name] = df
                 markers.clear_markers(type_name)
-                status_label.config(text="0 found")
+                # status_label.config(text="0 found")
 
         def error(err, tb):
             status_label.config(text="Fetch failed")
