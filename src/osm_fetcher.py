@@ -6,6 +6,9 @@ import socket
 from urllib.parse import urlparse
 from pathlib import Path
 from typing import Callable, Optional, Dict, List, Tuple
+import os
+import ssl
+import certifi
 
 import pandas as pd
 import overpy
@@ -504,6 +507,16 @@ def _fetch_overpass(osm_filter, type_name, progress_cb, point1_entry, point2_ent
             host = _short_host(url)
             try:
                 say(f"Trying {host}...")
+
+                # Prefer certifi's CA bundle for SSL verification.
+                os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+
+                # Ensure the global default HTTPS context uses certifi's bundle.
+                _certifi_ctx = ssl.create_default_context(cafile=certifi.where())
+
+                # For Python's urllib and other stdlib code that uses ssl._create_default_https_context
+                # monkeypatch the global factory to return our certifi-based context.
+                ssl._create_default_https_context = lambda *args, **kwargs: _certifi_ctx
 
                 api = overpy.Overpass(url=url)
                 result = _run_with_timeout(lambda: api.query(query), timeout=15)
