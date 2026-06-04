@@ -1,6 +1,8 @@
 ﻿import threading
 import queue
 import random
+from urllib.request import Request
+
 import pandas as pd
 import overpy
 import time
@@ -604,6 +606,13 @@ def _merge_local_overpass(local_df: Optional[pd.DataFrame], over_df: Optional[pd
     merged = merged.drop_duplicates("_k").drop(columns=["_k"]).reset_index(drop=True)
     return merged
 
+def _create_overpy(url: str) -> overpy.Overpass:
+    req = Request(url)
+    req.add_header('Referer', 'https://overpass-api.eu/')
+    req.add_header('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8')
+    req.add_header('Origin', 'https://overpass-turbo.eu')
+    req.add_header('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.3')
+    return overpy.Overpass(url=req)  # type: ignore  # openurl() accepts Request
 
 # ============================================================
 # Overpass portion (mostly original logic)
@@ -643,7 +652,7 @@ def _fetch_pois_overpass(osm_filter, type_name: str, status_label, mirrors, shor
             status_label.config(text=f"Trying {short_host(url)}...")
             status_label.update_idletasks()
 
-            api = overpy.Overpass(url=url)
+            api = _create_overpy(url)
             result = run_with_timeout(lambda: api.query(query), timeout=12)
 
             rows = []
@@ -819,7 +828,7 @@ def fetch_water_points(area_clause, status_label, mirrors, short_host):
             status_label.config(text=f"Trying {short_host(url)} (water points)...")
             status_label.update_idletasks()
 
-            api = overpy.Overpass(url=url)
+            api = _create_overpy(url=url)
             res = run_with_timeout(lambda: api.query(q_points), timeout=35)
 
             rows = []
@@ -924,7 +933,7 @@ def fetch_water_lines(area_clause, status_label, mirrors, short_host):
                     status_label.config(text=f"Trying {host} ({stage_label})...")
                     status_label.update_idletasks()
 
-                    api = overpy.Overpass(url=url)
+                    api = _create_overpy(url=url)
                     res = run_with_timeout(lambda: api.query(q), timeout=timeout_s)
 
                     print(f"[WATER LINES:{stage_label}] Raw result:")
@@ -1076,7 +1085,7 @@ def fetch_coastline_lines(area_clause, status_label, mirrors, short_host):
             status_label.config(text=f"Trying {host} (coastline)...")
             status_label.update_idletasks()
 
-            api = overpy.Overpass(url=url)
+            api = _create_overpy(url=url)
             res = run_with_timeout(lambda: api.query(q), timeout=45)
 
             print(f"[COASTLINE] Raw result:")
